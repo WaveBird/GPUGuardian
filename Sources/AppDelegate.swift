@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var menuItemDGPU: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupMainMenu()
+
         // ── 1. Status-bar item ──────────────────────────────────────────────
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "🌿 iGPU"
@@ -80,6 +82,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         showPanel()
         panelController.refreshNow()
+    }
+
+    /// Build the standard top application menu. Without an explicit mainMenu,
+    /// the app-name menu beside the Apple icon is empty and key equivalents
+    /// such as Cmd+Q are never routed.
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        // App menu (title replaced with the app name by macOS)
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+
+        let aboutItem = NSMenuItem(title: "关于 GPU Guardian", action: #selector(onAbout), keyEquivalent: "")
+        aboutItem.target = self
+        appMenu.addItem(aboutItem)
+        appMenu.addItem(.separator())
+
+        let hideItem = NSMenuItem(title: "隐藏 GPU Guardian", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        hideItem.target = NSApp
+        appMenu.addItem(hideItem)
+
+        let quitItem = NSMenuItem(title: "退出 GPU Guardian", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
+        appMenu.addItem(quitItem)
+
+        mainMenu.addItem(appMenuItem)
+
+        // Window menu
+        let windowMenuItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "窗口")
+        windowMenuItem.submenu = windowMenu
+        let showPanelItem = NSMenuItem(title: "显示主面板", action: #selector(showPanel), keyEquivalent: "g")
+        showPanelItem.target = self
+        showPanelItem.keyEquivalentModifierMask = [.command, .shift]
+        windowMenu.addItem(showPanelItem)
+        windowMenu.addItem(.separator())
+        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
+        mainMenu.addItem(windowMenuItem)
+
+        // Help menu
+        let helpMenuItem = NSMenuItem()
+        let helpMenu = NSMenu(title: "帮助")
+        helpMenuItem.submenu = helpMenu
+        helpMenu.addItem(withTitle: "GPU Guardian 帮助", action: #selector(onAbout), keyEquivalent: "?").target = self
+        mainMenu.addItem(helpMenuItem)
+
+        NSApp.mainMenu = mainMenu
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
