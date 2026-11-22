@@ -8,7 +8,7 @@ GPU Guardian 通过 IOKit 直接读取硬件与进程状态，在菜单栏实时
 
 - **实时状态栏**：菜单栏图标实时显示当前活跃显卡、负载、温度及锁定独显的进程数量。
 - **双显卡仪表盘**：主面板分别展示核显（iGPU）与独显（dGPU）的负载、温度、核心频率、显存占用。
-- **进程监控**：列出所有持有 GPU user client 的进程，显著标出锁定独显（OpenGL / Framebuffer）的进程。
+- **进程监控**：列出所有持有 GPU user client 的进程，显著标出锁定独显（OpenGL / Framebuffer）的进程，并显示各进程的 CPU 占用率与常驻内存。
 - **进程管理**：对可安全退出的进程发送退出或强杀信号；自动保护 WindowServer、Finder 等系统关键进程。
 - **全局显卡切换**：通过 `AppleGraphicsControl` 进行实时 mux 切换，并可选通过 `pmset -a gpuswitch` 持久化系统策略（需管理员授权）。
 - **自动刷新**：默认每 2 秒刷新一次状态，可手动刷新或关闭自动刷新。

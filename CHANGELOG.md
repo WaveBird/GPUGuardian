@@ -2,6 +2,14 @@
 
 本项目的所有 notable 变更都会记录在此文件中。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+- 应用图标：绿→橙红渐变的 GPU 芯片图标，随构建打包进 App（附无依赖图标生成脚本）。
+- 进程列表新增 CPU 与内存两列：显示各进程的 CPU 占用率（按逻辑核心归一化）和常驻内存，CPU 超过 50% 以橙色标示。
+  - 说明：受 macOS 权限限制，系统/root 进程的 CPU 与内存显示为「—」；CPU 占用率在首次看到进程时为空，需经过一次刷新间隔后显示。
+
 ## [1.0.0] - 2026-11-22
 
 ### 新增
