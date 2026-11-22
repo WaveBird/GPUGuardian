@@ -1,4 +1,5 @@
 import Cocoa
+import CoreGraphics
 
 final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
     // Mode header (compact, secondary)
@@ -380,10 +381,20 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
         rootStack.addArrangedSubview(footerLabel)
     }
 
+    /// True while either Control key is physically held down.
+    private var isControlHeld: Bool {
+        let flags = CGEventSource.flagsState(.hidSystemState)
+        return flags.contains(.maskControl)
+    }
+
     private func startTimer() {
         refreshTimer?.invalidate()
         let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.refreshNow()
+            guard let self = self else { return }
+            // Holding Control freezes the auto-refresh so the list stays put
+            // while the user inspects rows; manual refresh still works.
+            guard !self.isControlHeld else { return }
+            self.refreshNow()
         }
         // Timer scheduled on the default mode pauses while the user tracks a
         // mouse drag, types, or a modal (e.g. the quit confirmation) is up.
