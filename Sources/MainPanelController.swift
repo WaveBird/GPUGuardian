@@ -40,6 +40,10 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
     private var displayedProcesses: [GPUProcessInfo] = []
     private var refreshTimer: Timer?
 
+    // Current sort state for the process table (nil = keep the default GPU-priority order).
+    private var sortColumn: String?
+    private var sortAscending = true
+
     var onStatusUpdated: ((GPUHardwareStatus, [GPUProcessInfo]) -> Void)?
 
     convenience init() {
@@ -325,26 +329,31 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
         colPid.title = "PID"
         colPid.width = 65
         colPid.minWidth = 55
+        colPid.sortDescriptorPrototype = NSSortDescriptor(key: "pid", ascending: true)
 
         let colCPU = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("cpu"))
         colCPU.title = "CPU"
         colCPU.width = 70
         colCPU.minWidth = 60
+        colCPU.sortDescriptorPrototype = NSSortDescriptor(key: "cpu", ascending: true)
 
         let colMem = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("mem"))
         colMem.title = "内存"
         colMem.width = 80
         colMem.minWidth = 65
+        colMem.sortDescriptorPrototype = NSSortDescriptor(key: "mem", ascending: true)
 
         let colGPU = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("gpu"))
         colGPU.title = "显卡状态"
         colGPU.width = 160
         colGPU.minWidth = 140
+        colGPU.sortDescriptorPrototype = NSSortDescriptor(key: "gpu", ascending: true)
 
         let colDetail = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("detail"))
         colDetail.title = "上下文详情"
         colDetail.width = 180
         colDetail.minWidth = 130
+        colDetail.sortDescriptorPrototype = NSSortDescriptor(key: "detail", ascending: true)
 
         let colAction = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("action"))
         colAction.title = "操作"
@@ -497,11 +506,37 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
     }
 
     private func applyFilterAndReload() {
-        if chkOnlyDiscrete.state == .on {
-            displayedProcesses = allProcesses.filter { $0.isActivelyUsingDiscrete }
-        } else {
-            displayedProcesses = allProcesses
+        var list = chkOnlyDiscrete.state == .on
+            ? allProcesses.filter { $0.isActivelyUsingDiscrete }
+            : allProcesses
+
+        if let column = sortColumn {
+            let asc = sortAscending
+            list.sort { a, b in
+                let result: ComparisonResult
+                switch column {
+                case "pid":
+                    result = a.pid == b.pid ? .orderedSame : (a.pid < b.pid ? .orderedAscending : .orderedDescending)
+                case "cpu":
+                    let av = a.cpuPercent ?? -1, bv = b.cpuPercent ?? -1
+                    result = av == bv ? .orderedSame : (av < bv ? .orderedAscending : .orderedDescending)
+                case "mem":
+                    let av = a.memoryBytes ?? 0, bv = b.memoryBytes ?? 0
+                    result = av == bv ? .orderedSame : (av < bv ? .orderedAscending : .orderedDescending)
+                case "gpu":
+                    result = a.gpuBadgeText.localizedStandardCompare(b.gpuBadgeText)
+                case "detail":
+                    result = a.detailText.localizedStandardCompare(b.detailText)
+                default:
+                    result = .orderedSame
+                }
+                // Stable tie-break by PID so equal values keep a consistent order.
+                if result == .orderedSame { return a.pid < b.pid }
+                return asc ? result == .orderedAscending : result == .orderedDescending
+            }
         }
+
+        displayedProcesses = list
         tableView.reloadData()
     }
 
@@ -587,6 +622,19 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
     }
 
     // MARK: - NSTableViewDataSource & Delegate
+
+    /// Called by NSTableView when the user clicks a sortable column header.
+    /// Toggling the same column flips the direction; a new column starts ascending.
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard let descriptor = tableView.sortDescriptors.first else {
+            sortColumn = nil
+            applyFilterAndReload()
+            return
+        }
+        sortColumn = descriptor.key
+        sortAscending = descriptor.ascending
+        applyFilterAndReload()
+    }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
         return displayedProcesses.count
