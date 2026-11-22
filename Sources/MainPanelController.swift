@@ -44,13 +44,13 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 580),
+            contentRect: NSRect(x: 0, y: 0, width: 1010, height: 580),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "GPU Guardian — 显卡切换与进程监控"
-        window.minSize = NSSize(width: 760, height: 460)
+        window.minSize = NSSize(width: 900, height: 460)
         window.center()
         window.isReleasedWhenClosed = false
         self.init(window: window)
@@ -326,6 +326,16 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
         colPid.width = 65
         colPid.minWidth = 55
 
+        let colCPU = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("cpu"))
+        colCPU.title = "CPU"
+        colCPU.width = 70
+        colCPU.minWidth = 60
+
+        let colMem = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("mem"))
+        colMem.title = "内存"
+        colMem.width = 80
+        colMem.minWidth = 65
+
         let colGPU = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("gpu"))
         colGPU.title = "显卡状态"
         colGPU.width = 160
@@ -343,6 +353,8 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
 
         tableView.addTableColumn(colApp)
         tableView.addTableColumn(colPid)
+        tableView.addTableColumn(colCPU)
+        tableView.addTableColumn(colMem)
         tableView.addTableColumn(colGPU)
         tableView.addTableColumn(colDetail)
         tableView.addTableColumn(colAction)
@@ -621,6 +633,22 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
 
         case "pid":
             let label = NSTextField(labelWithString: "\(item.pid)")
+            label.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            label.textColor = NSColor.secondaryLabelColor
+            return label
+
+        case "cpu":
+            let label = NSTextField(labelWithString: item.cpuText)
+            label.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+            if let p = item.cpuPercent, p >= 50 {
+                label.textColor = NSColor.systemOrange
+            } else {
+                label.textColor = NSColor.secondaryLabelColor
+            }
+            return label
+
+        case "mem":
+            let label = NSTextField(labelWithString: item.memoryText)
             label.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             label.textColor = NSColor.secondaryLabelColor
             return label

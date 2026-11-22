@@ -3,6 +3,8 @@
 #include <IOKit/IOKitLib.h>
 #include <errno.h>
 #include <signal.h>
+#include <libproc.h>
+#include <sys/proc_info.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -301,4 +303,18 @@ int gpu_mux_switch_live(int mode) {
     kr = IOConnectCallScalarMethod(connect, kSetMuxState, scalarI, 3, NULL, NULL);
     IOServiceClose(connect);
     return (int)kr;
+}
+
+int gpu_process_usage(int32_t pid, uint64_t *out_cpu_ns, uint64_t *out_rss_bytes) {
+    if (pid <= 0 || !out_cpu_ns || !out_rss_bytes) return -1;
+    struct proc_taskinfo ti;
+    int ret = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &ti, sizeof(ti));
+    if (ret != (int)sizeof(ti)) {
+        *out_cpu_ns = 0;
+        *out_rss_bytes = 0;
+        return -1; // dead PID (ESRCH) or not permitted (EPERM, e.g. root processes)
+    }
+    *out_cpu_ns = ti.pti_total_user + ti.pti_total_system;
+    *out_rss_bytes = ti.pti_resident_size;
+    return 0;
 }

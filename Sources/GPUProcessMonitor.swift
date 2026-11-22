@@ -40,6 +40,23 @@ struct GPUProcessInfo {
     let integratedClientCount: Int32
     let isProtected: Bool
     let dgpuPoweredNow: Bool
+    /// CPU usage as a percentage of all logical cores; nil when unavailable.
+    let cpuPercent: Double?
+    /// Resident memory in bytes; nil when unavailable (e.g. root-owned processes).
+    let memoryBytes: UInt64?
+
+    var cpuText: String {
+        guard let p = cpuPercent else { return "—" }
+        return String(format: "%.1f%%", p)
+    }
+
+    var memoryText: String {
+        guard let b = memoryBytes else { return "—" }
+        if b >= 1024 * 1024 * 1024 {
+            return String(format: "%.1f GB", Double(b) / (1024.0 * 1024.0 * 1024.0))
+        }
+        return String(format: "%.0f MB", Double(b) / (1024.0 * 1024.0))
+    }
 
     var isActivelyUsingDiscrete: Bool {
         if hasDiscreteOpenGLLock || hasDiscreteFramebuffer {
@@ -92,6 +109,47 @@ final class GPUProcessMonitor {
         "SystemUIServer", "ControlCenter", "NotificationCenter",
         "GPUGuardian", "kernel_task", "launchd"
     ]
+
+    // CPU % needs two samples: (ΔCPU time / Δwall time) / logical core count.
+    private struct CPUSample {
+        let cpuTimeNS: UInt64
+        let wallClock: Date
+    }
+    private static var cpuSamples: [Int32: CPUSample] = [:]
+    private static let cpuLock = NSLock()
+    private static let logicalCores = Double(ProcessInfo.processInfo.processorCount)
+
+    /// Returns (cpuPercent, residentBytes). `cpuPercent` is nil on the first
+    /// sighting of a PID or when usage is not readable (e.g. root processes).
+    private static func usage(for pid: Int32) -> (cpu: Double?, memory: UInt64?) {
+        var cpuNS: UInt64 = 0
+        var rss: UInt64 = 0
+        guard gpu_process_usage(pid, &cpuNS, &rss) == 0 else {
+            cpuLock.lock(); cpuSamples.removeValue(forKey: pid); cpuLock.unlock()
+            return (nil, nil)
+        }
+
+        let now = Date()
+        cpuLock.lock()
+        let previous = cpuSamples[pid]
+        cpuSamples[pid] = CPUSample(cpuTimeNS: cpuNS, wallClock: now)
+        // Drop samples for PIDs we have not seen recently to avoid stale buildup.
+        if cpuSamples.count > 2048 {
+            cpuSamples = cpuSamples.filter { now.timeIntervalSince($0.value.wallClock) < 120 }
+        }
+        cpuLock.unlock()
+
+        var cpuPercent: Double? = nil
+        if let prev = previous {
+            let deltaCPU = Double(cpuNS > prev.cpuTimeNS ? cpuNS - prev.cpuTimeNS : 0)
+            let deltaWall = now.timeIntervalSince(prev.wallClock)
+            if deltaWall > 0.05 {
+                // Normalize by core count so a fully busy core reads ~100%.
+                cpuPercent = min(100.0 * logicalCores, deltaCPU / 1_000_000_000.0 / deltaWall / logicalCores * 100.0)
+            }
+        }
+        return (cpuPercent, rss)
+    }
 
     static func readHardwareStatus() -> GPUHardwareStatus {
         return gpu_read_hardware_status()
@@ -148,6 +206,8 @@ final class GPUProcessMonitor {
             let icon = app?.icon ?? NSWorkspace.shared.icon(forFileType: NSFileTypeForHFSTypeCode(OSType(kGenericApplicationIcon)))
             icon.size = NSSize(width: 20, height: 20)
 
+            let usageInfo = usage(for: entry.pid)
+
             let isProtected = (entry.pid == selfPid) ||
                               (entry.pid <= 1) ||
                               protectedNames.contains(rawName) ||
@@ -165,7 +225,9 @@ final class GPUProcessMonitor {
                 discreteClientCount: entry.discreteClientCount,
                 integratedClientCount: entry.integratedClientCount,
                 isProtected: isProtected,
-                dgpuPoweredNow: dgpuPowered
+                dgpuPoweredNow: dgpuPowered,
+                cpuPercent: usageInfo.cpu,
+                memoryBytes: usageInfo.memory
             )
             result.append(info)
         }

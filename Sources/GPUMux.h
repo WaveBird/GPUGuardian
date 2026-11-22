@@ -41,6 +41,10 @@ GPUHardwareStatus gpu_read_hardware_status(void);
 // Returns count written (up to max_entries).
 int gpu_collect_processes(GPUProcessEntry *out_entries, int max_entries);
 
+// Read per-process CPU time (nanoseconds, user+system) and resident memory.
+// Returns 0 on success, non-zero when the PID is gone or not permitted.
+int gpu_process_usage(int32_t pid, uint64_t *out_cpu_ns, uint64_t *out_rss_bytes);
+
 // Attempt live mux switch via AppleGraphicsControl user client:
 // mode: 0 = Integrated Only, 1 = Discrete Only, 2 = Dynamic Switching
 // Returns 0 on success, non-zero IOKit kern_return_t otherwise.
