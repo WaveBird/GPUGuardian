@@ -15,4 +15,4 @@
 - 一键构建脚本 `build.sh`，生成 ad-hoc 签名的 `GPUGuardian.app`。
 - 项目开源规范化：MIT 许可证、README、贡献指南与变更日志。
 
-[1.0.0]: https://github.com/your-username/GPUGuardian/releases/tag/v1.0.0
+[1.0.0]: https://github.com/WaveBird/GPUGuardian/releases/tag/v1.0.0

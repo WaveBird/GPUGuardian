@@ -36,7 +36,7 @@ GPU Guardian 通过 IOKit 直接读取硬件与进程状态，在菜单栏实时
 **编译：**
 
 ```bash
-git clone <你的仓库地址>.git
+git clone https://github.com/WaveBird/GPUGuardian.git
 cd GPUGuardian
 ./build.sh
 ```
