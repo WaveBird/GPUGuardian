@@ -1,0 +1,226 @@
+import Cocoa
+import Foundation
+
+enum GPUMode: Int32 {
+    case integratedOnly = 0
+    case discreteOnly = 1
+    case dynamicSwitching = 2
+
+    var title: String {
+        switch self {
+        case .integratedOnly: return "仅核显 (Integrated)"
+        case .discreteOnly: return "仅独显 (Discrete)"
+        case .dynamicSwitching: return "自动切换 (Dynamic)"
+        }
+    }
+}
+
+struct GPUProcessInfo {
+    let pid: Int32
+    let name: String
+    let bundleIdentifier: String?
+    let icon: NSImage
+    let onDiscrete: Bool
+    let onIntegrated: Bool
+    let hasDiscreteOpenGLLock: Bool
+    let hasDiscreteFramebuffer: Bool
+    let discreteClientCount: Int32
+    let integratedClientCount: Int32
+    let isProtected: Bool
+    let dgpuPoweredNow: Bool
+
+    var isActivelyUsingDiscrete: Bool {
+        if hasDiscreteOpenGLLock || hasDiscreteFramebuffer {
+            return true
+        }
+        return onDiscrete && dgpuPoweredNow
+    }
+
+    var gpuPriority: Int {
+        if hasDiscreteOpenGLLock { return 0 }
+        if hasDiscreteFramebuffer { return 1 }
+        if isActivelyUsingDiscrete { return 2 }
+        return 3
+    }
+
+    var gpuBadgeText: String {
+        if hasDiscreteOpenGLLock {
+            return "🔥 独显锁 (OpenGL)"
+        } else if hasDiscreteFramebuffer {
+            return "🔥 独显 (帧缓冲)"
+        } else if isActivelyUsingDiscrete && onIntegrated {
+            return "⚡ 独显 + 核显"
+        } else if isActivelyUsingDiscrete {
+            return "⚡ 独显"
+        } else if onDiscrete {
+            return "🌿 核显 (dGPU句柄休眠)"
+        } else {
+            return "🌿 核显"
+        }
+    }
+
+    var detailText: String {
+        var parts: [String] = []
+        if onDiscrete {
+            var d = "dGPU×\(discreteClientCount)"
+            if hasDiscreteOpenGLLock { d += " [OpenGL锁]" }
+            if hasDiscreteFramebuffer { d += " [FB]" }
+            parts.append(d)
+        }
+        if onIntegrated {
+            parts.append("iGPU×\(integratedClientCount)")
+        }
+        return parts.joined(separator: "  ")
+    }
+}
+
+final class GPUProcessMonitor {
+    private static let protectedNames: Set<String> = [
+        "WindowServer", "loginwindow", "Dock", "Finder",
+        "SystemUIServer", "ControlCenter", "NotificationCenter",
+        "GPUGuardian", "kernel_task", "launchd"
+    ]
+
+    static func readHardwareStatus() -> GPUHardwareStatus {
+        return gpu_read_hardware_status()
+    }
+
+    static func readPmsetGPUSwitch() -> Int {
+        let task = Process()
+        task.launchPath = "/usr/bin/pmset"
+        task.arguments = ["-g"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let out = String(data: data, encoding: .utf8) {
+                for line in out.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("gpuswitch") {
+                        let tokens = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                        if tokens.count >= 2, let val = Int(tokens[1]) {
+                            return val
+                        }
+                    }
+                }
+            }
+        } catch {}
+        return 2
+    }
+
+    static func fetchProcesses(dgpuPowered: Bool) -> [GPUProcessInfo] {
+        let maxEntries = 512
+        var rawEntries = [GPUProcessEntry](repeating: GPUProcessEntry(), count: maxEntries)
+        let count = Int(gpu_collect_processes(&rawEntries, Int32(maxEntries)))
+        let selfPid = ProcessInfo.processInfo.processIdentifier
+
+        var result: [GPUProcessInfo] = []
+        result.reserveCapacity(count)
+
+        for i in 0..<count {
+            let entry = rawEntries[i]
+            let rawName = withUnsafePointer(to: entry.name) {
+                $0.withMemoryRebound(to: CChar.self, capacity: 128) {
+                    String(cString: $0)
+                }
+            }
+
+            let app = NSRunningApplication(processIdentifier: entry.pid)
+            let displayName = app?.localizedName ?? rawName
+            let icon = app?.icon ?? NSWorkspace.shared.icon(forFileType: NSFileTypeForHFSTypeCode(OSType(kGenericApplicationIcon)))
+            icon.size = NSSize(width: 20, height: 20)
+
+            let isProtected = (entry.pid == selfPid) ||
+                              (entry.pid <= 1) ||
+                              protectedNames.contains(rawName) ||
+                              protectedNames.contains(displayName)
+
+            let info = GPUProcessInfo(
+                pid: entry.pid,
+                name: displayName,
+                bundleIdentifier: app?.bundleIdentifier,
+                icon: icon,
+                onDiscrete: entry.onDiscrete,
+                onIntegrated: entry.onIntegrated,
+                hasDiscreteOpenGLLock: entry.hasDiscreteOpenGLLock,
+                hasDiscreteFramebuffer: entry.hasDiscreteFramebuffer,
+                discreteClientCount: entry.discreteClientCount,
+                integratedClientCount: entry.integratedClientCount,
+                isProtected: isProtected,
+                dgpuPoweredNow: dgpuPowered
+            )
+            result.append(info)
+        }
+
+        result.sort { lhs, rhs in
+            if lhs.gpuPriority != rhs.gpuPriority {
+                return lhs.gpuPriority < rhs.gpuPriority
+            }
+            if lhs.discreteClientCount != rhs.discreteClientCount {
+                return lhs.discreteClientCount > rhs.discreteClientCount
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+
+        return result
+    }
+
+    /// Perform system-level global GPU mode switch:
+    /// 1) Try live AppleGraphicsControl mux switch;
+    /// 2) Also apply persistent `pmset -a gpuswitch` policy via admin prompt if requested or if mux requires privileges.
+    static func switchGlobalMode(_ mode: GPUMode, persistWithPmset: Bool) -> (success: Bool, message: String) {
+        let muxResult = gpu_mux_switch_live(mode.rawValue)
+
+        if persistWithPmset {
+            let script = "do shell script \"pmset -a gpuswitch \(mode.rawValue)\" with administrator privileges"
+            var errDict: NSDictionary?
+            if let appleScript = NSAppleScript(source: script) {
+                appleScript.executeAndReturnError(&errDict)
+                if let err = errDict {
+                    let msg = (err[NSAppleScript.errorMessage] as? String) ?? "权限授权被取消或失败"
+                    if muxResult == 0 {
+                        return (true, "Mux 实时切换已尝试，但 pmset 写入未完成: \(msg)")
+                    }
+                    return (false, "切换失败: \(msg)")
+                }
+                return (true, "已系统级切换为: \(mode.title)")
+            }
+        }
+
+        if muxResult == 0 {
+            return (true, "已通过硬件 Mux 切换为: \(mode.title)")
+        } else {
+            return (false, "硬件 Mux 返回状态码 \(muxResult)，建议使用「系统级策略切换 (pmset)」")
+        }
+    }
+
+    static func terminateProcess(pid: Int32, force: Bool) -> (success: Bool, message: String) {
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            let ok = force ? app.forceTerminate() : app.terminate()
+            if ok {
+                return (true, force ? "已发送强杀信号到 PID \(pid)" : "已请求应用退出 (PID \(pid))")
+            }
+        }
+        let sig = force ? SIGKILL : SIGTERM
+        if kill(pid, sig) == 0 {
+            return (true, "已发送 \(force ? "SIGKILL" : "SIGTERM") 到 PID \(pid)")
+        } else {
+            let errStr = String(cString: strerror(errno))
+            if errno == EPERM {
+                // Root-owned process: offer AppleScript admin kill
+                let cmd = "do shell script \"kill -\(force ? 9 : 15) \(pid)\" with administrator privileges"
+                var errDict: NSDictionary?
+                if let appleScript = NSAppleScript(source: cmd) {
+                    appleScript.executeAndReturnError(&errDict)
+                    if errDict == nil {
+                        return (true, "已提权终止进程 PID \(pid)")
+                    }
+                }
+            }
+            return (false, "无法终止 PID \(pid): \(errStr)")
+        }
+    }
+}

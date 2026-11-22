@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Build artifacts
+/build/
+*.o
+*.swiftmodule
+*.swiftdoc
+*.dSYM/
+DerivedData/
+
+# Bundled app product (rebuild with ./build.sh)
+*.app/
+
+# Xcode / SwiftPM
+*.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+.swiftpm/
+
+# Logs & temporary files
+*.log
+*.tmp
+*.swp
+*~
+
+# Local environment overrides
+.env
+.env.local
