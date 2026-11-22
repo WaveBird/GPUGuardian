@@ -361,9 +361,14 @@ final class MainPanelController: NSWindowController, NSTableViewDataSource, NSTa
 
     private func startTimer() {
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshNow()
         }
+        // Timer scheduled on the default mode pauses while the user tracks a
+        // mouse drag, types, or a modal (e.g. the quit confirmation) is up.
+        // Common modes keep the list fresh during normal interaction.
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
     }
 
     func refreshNow() {

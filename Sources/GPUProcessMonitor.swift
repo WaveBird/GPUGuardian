@@ -1,6 +1,18 @@
 import Cocoa
 import Foundation
 
+#if canImport(Darwin)
+import Darwin
+#endif
+
+/// Returns true only while a process with this PID still exists.
+/// Used to drop stale IOKit user-client records left behind by exited processes.
+@inline(__always)
+func gpu_pid_is_alive(_ pid: Int32) -> Bool {
+    if pid <= 1 { return false }
+    return kill(pid, 0) == 0 || errno == EPERM
+}
+
 enum GPUMode: Int32 {
     case integratedOnly = 0
     case discreteOnly = 1
@@ -122,6 +134,9 @@ final class GPUProcessMonitor {
 
         for i in 0..<count {
             let entry = rawEntries[i]
+            // IOKit client records can outlive the process; never show dead PIDs.
+            guard gpu_pid_is_alive(entry.pid) else { continue }
+
             let rawName = withUnsafePointer(to: entry.name) {
                 $0.withMemoryRebound(to: CChar.self, capacity: 128) {
                     String(cString: $0)
@@ -198,6 +213,10 @@ final class GPUProcessMonitor {
     }
 
     static func terminateProcess(pid: Int32, force: Bool) -> (success: Bool, message: String) {
+        // The process may have exited between the snapshot and the click.
+        guard gpu_pid_is_alive(pid) else {
+            return (false, "PID \(pid) 已经退出，列表将自动刷新")
+        }
         if let app = NSRunningApplication(processIdentifier: pid) {
             let ok = force ? app.forceTerminate() : app.terminate()
             if ok {

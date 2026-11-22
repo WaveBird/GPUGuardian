@@ -1,6 +1,8 @@
 #include "GPUMux.h"
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
+#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,6 +132,9 @@ static void record_process_client(
     bool isFramebuffer
 ) {
     if (pid <= 0) return;
+    // IOKit user-client entries are often left behind after a process exits.
+    // Skip dead PIDs so stale rows do not show up in the UI.
+    if (kill(pid, 0) != 0 && errno == ESRCH) return;
     int idx = -1;
     for (int i = 0; i < *count; i++) {
         if (entries[i].pid == pid) {
