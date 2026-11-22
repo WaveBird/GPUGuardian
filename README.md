@@ -72,6 +72,9 @@ GPUGuardian/
 │   ├── MainPanelController.swift  # 主面板 UI 与交互逻辑
 │   ├── AppDelegate.swift          # 菜单栏、菜单与生命周期
 │   └── main.swift                 # 应用入口
+├── Assets/
+│   ├── GPUGuardian.icns           # 应用图标（绿=核显 → 橙红=独显）
+│   └── generate_icon.py/.sh       # 无依赖图标生成器（可重新生成 icns）
 ├── Resources/Info.plist           # 应用 Bundle 配置
 ├── build.sh                       # 一键构建脚本
 ├── LICENSE                        # MIT 许可证

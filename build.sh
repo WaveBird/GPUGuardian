@@ -39,6 +39,14 @@ swiftc -O \
 
 cp "$ROOT_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 
+# Generate the app icon if the committed .icns is missing, then bundle it.
+ICON="$ROOT_DIR/Assets/GPUGuardian.icns"
+if [ ! -f "$ICON" ]; then
+    echo "Icon missing, generating..."
+    "$ROOT_DIR/Assets/generate_icon.sh"
+fi
+cp "$ICON" "$RESOURCES_DIR/GPUGuardian.icns"
+
 echo "Ad-hoc signing GPUGuardian.app..."
 codesign --force --deep --sign - "$APP_BUNDLE"
 
